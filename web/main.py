@@ -86,7 +86,17 @@ class Player(pygame.sprite.Sprite):
         self.rect.y = WINDOW_HEIGHT - 120
         self.speed = 5
         
+        # Touch control variables
+        self.touch_target_x = None
+        self.touch_target_y = None
+        
+    def set_touch_target(self, x, y):
+        """Set target position for touch-based movement"""
+        self.touch_target_x = x
+        self.touch_target_y = y
+        
     def update(self):
+        # Keyboard controls
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT] and self.rect.x > 0:
             self.rect.x -= self.speed
@@ -96,6 +106,31 @@ class Player(pygame.sprite.Sprite):
             self.rect.y -= self.speed
         if keys[pygame.K_DOWN] and self.rect.y < WINDOW_HEIGHT - self.rect.height:
             self.rect.y += self.speed
+            
+        # Touch controls - move towards touch target
+        if self.touch_target_x is not None and self.touch_target_y is not None:
+            dx = self.touch_target_x - self.rect.centerx
+            dy = self.touch_target_y - self.rect.centery
+            distance = (dx**2 + dy**2)**0.5
+            
+            if distance > 5:  # Only move if far enough from target
+                # Normalize and apply speed
+                if distance > 0:
+                    dx = (dx / distance) * self.speed
+                    dy = (dy / distance) * self.speed
+                    
+                    # Update position with boundary checking
+                    new_x = self.rect.x + dx
+                    new_y = self.rect.y + dy
+                    
+                    if 0 <= new_x <= WINDOW_WIDTH - self.rect.width:
+                        self.rect.x = new_x
+                    if 0 <= new_y <= WINDOW_HEIGHT - self.rect.height:
+                        self.rect.y = new_y
+            else:
+                # Close enough, stop moving
+                self.touch_target_x = None
+                self.touch_target_y = None
 
 class Projectile(pygame.sprite.Sprite):
     def __init__(self, x, y, is_super=False):
@@ -836,6 +871,9 @@ class Game:
         self.game_over = False
         self.font = pygame.font.Font(None, 36)
         
+        # Touch control button
+        self.shoot_button = pygame.Rect(WINDOW_WIDTH - 150, WINDOW_HEIGHT - 150, 100, 100)
+        
     def shoot(self):
         # Check if super poop is ready
         if self.super_ready:
@@ -1108,6 +1146,31 @@ class Game:
             inst_font = pygame.font.Font(None, 24)
             inst_text = inst_font.render("Arrow Keys: Move | SPACE: Shoot | ESC: Quit", True, BLACK)
             screen.blit(inst_text, (WINDOW_WIDTH // 2 - 200, 10))
+            
+            # Draw touch shoot button (semi-transparent)
+            button_surface = pygame.Surface((self.shoot_button.width, self.shoot_button.height), pygame.SRCALPHA)
+            
+            # Flashy color if super poop is ready
+            if self.super_ready:
+                flash_colors = [(255, 215, 0, 150), (255, 165, 0, 150), (255, 0, 255, 150)]
+                button_color = flash_colors[(pygame.time.get_ticks() // 200) % len(flash_colors)]
+            else:
+                button_color = (255, 100, 100, 150)
+            
+            pygame.draw.circle(button_surface, button_color, 
+                             (self.shoot_button.width // 2, self.shoot_button.height // 2), 
+                             self.shoot_button.width // 2)
+            pygame.draw.circle(button_surface, (255, 255, 255, 200), 
+                             (self.shoot_button.width // 2, self.shoot_button.height // 2), 
+                             self.shoot_button.width // 2, 3)
+            
+            screen.blit(button_surface, (self.shoot_button.x, self.shoot_button.y))
+            
+            # Draw poop icon in button
+            button_font = pygame.font.Font(None, 48)
+            poop_text = button_font.render("💩", True, WHITE)
+            poop_rect = poop_text.get_rect(center=self.shoot_button.center)
+            screen.blit(poop_text, poop_rect)
         
         pygame.display.flip()
         
@@ -1168,6 +1231,7 @@ async def main():
     
     print("🎮 Harrycane Game Started!")
     print("Controls: Arrow Keys to move, SPACE to shoot, ESC to quit")
+    print("📱 Touch Controls: Tap screen to move, tap button to shoot")
     print("⚠️ AVOID THE FLYING CATS! ⚠️")
     
     while running:
@@ -1184,6 +1248,22 @@ async def main():
                 elif event.key == pygame.K_r and game.game_over:
                     game.restart()
                     print("🔄 Game Restarted!")
+            
+            # Touch/Mouse controls
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                
+                if game.game_over:
+                    # Restart on any tap during game over
+                    game.restart()
+                    print("🔄 Game Restarted!")
+                else:
+                    # Check if shoot button was tapped
+                    if game.shoot_button.collidepoint(mouse_pos):
+                        game.shoot()
+                    else:
+                        # Set movement target to where user tapped
+                        game.player.set_touch_target(mouse_pos[0], mouse_pos[1])
         
         game.update()
         game.draw()

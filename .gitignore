@@ -8,6 +8,7 @@ env/
 venv/
 ENV/
 build/
+!web/build/web/
 develop-eggs/
 dist/
 downloads/
